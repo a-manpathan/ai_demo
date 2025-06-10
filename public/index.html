@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Processing App</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; border: 1px solid #ccc; }
+        .tab-btn.active { background: #007bff; color: white; }
+        .tab-content { display: none; padding: 20px; border: 1px solid #ccc; }
+        .tab-content.active { display: block; }
+        textarea, select, input { width: 100%; padding: 10px; margin-bottom: 10px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result-content { margin-top: 10px; }
+        .error { color: red; }
+        .status { color: gray; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="tabs">
+        <div class="tab-btn active" data-tab="translate">Translate</div>
+        <div class="tab-btn" data-tab="summarize">Summarize</div>
+        <div class="tab-btn" data-tab="symptoms">Symptom Analysis</div>
+    </div>
+
+    <div id="translate" class="tab-content active">
+        <h2>Translate Text</h2>
+        <textarea id="text-to-translate" placeholder="Enter text to translate"></textarea>
+        <select id="target-language">
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+        </select>
+        <button id="translate-btn">Translate</button>
+        <div id="translate-result" class="result-content"></div>
+        <div id="translate-status" class="status"></div>
+    </div>
+
+    <div id="summarize" class="tab-content">
+        <h2>Summarize Text</h2>
+        <textarea id="text-to-summarize" placeholder="Enter text to summarize"></textarea>
+        <button id="summarize-btn">Summarize</button>
+        <div id="summarize-result" class="result-content"></div>
+        <div id="summarize-status" class="status"></div>
+    </div>
+
+    <div id="symptoms" class="tab-content">
+        <h2>Symptom Analysis</h2>
+        <textarea id="symptoms-input" placeholder="Enter symptoms (e.g., fever, cough, sore throat)"></textarea>
+        <button id="analyze-symptoms-btn">Analyze</button>
+        <div id="symptoms-result" class="result-content"></div>
+        <div id="symptoms-status" class="status"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io('http://localhost:5000');
+
+        // Tab switching
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.getAttribute('data-tab')).classList.add('active');
+            });
+        });
+
+        // Socket.io status updates
+        socket.on('status', ({ action, message }) => {
+            const statusDiv = document.getElementById(`${action}-status`);
+            if (statusDiv) statusDiv.textContent = message;
+        });
+
+        // Translation
+        document.getElementById('translate-btn').addEventListener('click', async () => {
+            const text = document.getElementById('text-to-translate').value;
+            const targetLanguage = document.getElementById('target-language').value;
+            const resultDiv = document.getElementById('translate-result');
+            const btn = document.getElementById('translate-btn');
+
+            if (!text) {
+                resultDiv.innerHTML = '<span class="error">Please enter text to translate.</span>';
+                return;
+            }
+
+            resultDiv.innerHTML = 'Translating...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:5000/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, targetLanguage }),
+                });
+                const data = await response.json();
+                if (data.error) {
+                    resultDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p><strong>Detected Language:</strong> ${data.detectedLanguage}</p>
+                        <p><strong>Translated Text:</strong> ${data.translatedText}</p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Summarization
+        document.getElementById('summarize-btn').addEventListener('click', async () => {
+            const text = document.getElementById('text-to-summarize').value;
+            const resultDiv = document.getElementById('summarize-result');
+            const btn = document.getElementById('summarize-btn');
+
+            if (!text) {
+                resultDiv.innerHTML = '<span class="error">Please enter text to summarize.</span>';
+                return;
+            }
+
+            resultDiv.innerHTML = 'Summarizing...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:5000/summarize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text }),
+                });
+                const data = await response.json();
+                if (data.error) {
+                    resultDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<p><strong>Summary:</strong> ${data.summary}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Symptom Analysis
+        document.getElementById('analyze-symptoms-btn').addEventListener('click', async () => {
+            const symptoms = document.getElementById('symptoms-input').value;
+            const resultDiv = document.getElementById('symptoms-result');
+            const btn = document.getElementById('analyze-symptoms-btn');
+
+            if (!symptoms) {
+                resultDiv.innerHTML = '<span class="error">Please enter symptoms.</span>';
+                return;
+            }
+
+            resultDiv.innerHTML = 'Analyzing...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:5000/analyze-symptoms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symptoms }),
+                });
+                const data = await response.json();
+                if (data.error) {
+                    resultDiv.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<p><strong>Analysis:</strong> ${data.analysis}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
